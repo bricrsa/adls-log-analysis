@@ -16,6 +16,11 @@ Using the Azure Databricks portal, you may import the notebook from this reposit
 Once imported, follow the instructions in the notebook. The basic steps are:
 
 1. Mount the `$logs` container into DBFS using AAD Credential Passthrough.
+
 2. Execute the DDL statement to create an external table definition that _wraps_ the data being emitted as logs. This table definition does not require data to be inserted into it directly and simply acts as a mechanism to allow the Spark query engine to process queries against the data. This step also creates a view `AdlsLogs` which includes some computed columns and will be the main query target.
+       
+    This step should only be executed once as dropping and re-creating the table will lose all accumulated partition information.
+  
 3. Discover hourly partitions. Close observation of the `CREATE TABLE` statement will reveal a partitioning structure of; `Year, Month, Day, Hour`. Unfortunately, because the directory names do not follow the Spark requirement for partition directory names, the partitions must be manually added via a series of `ALTER TABLE ADD PARTITION` statements. Step 3 processes the directory structure and adds newly discovered partitions. This step should be run prior to any querying 'session' as new partitions are created for every hour of access.
+
 4. Query the logs using partition columns. In addition to the raw partition columns, a computed column `PartitionedRequestDate` allows the specification of query predicates that efficiently restrict the amount of data read to satisfy any given query. Without using partition columns, the query engine must process ALL data which depending on the volume of log data, can be very time consuming. Specifying partition columns enabled partition pruning to limit the amount of data read.
