@@ -25,4 +25,4 @@ Once imported, follow the instructions in the notebook. The basic steps are:
 
     This step should be run prior to any querying 'session' as new partitions are created for every hour of access.
 
-4. Query the logs using partition columns. In addition to the raw partition columns, a computed column `PartitionedRequestDate` allows the specification of query predicates that efficiently restrict the amount of data read to satisfy any given query. Without using partition columns, the query engine must process ALL data which depending on the volume of log data, can be very time consuming. Specifying partition columns enabled partition pruning to limit the amount of data read.
+4. Query the logs using partition columns. In addition to the raw partition columns, a computed column `PartitionedRequestDate` allows the specification of query predicates that efficiently restrict the amount of data read to satisfy any given query. Without using partition columns, the query engine must process ALL data which, depending on the volume of log data, can be very time consuming. Specifying partition columns enables partition pruning to limit the amount of data read.
