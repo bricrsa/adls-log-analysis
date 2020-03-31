@@ -21,6 +21,8 @@ Once imported, follow the instructions in the notebook. The basic steps are:
        
     This step should only be executed once as dropping and re-creating the table will lose all accumulated partition information.
   
-3. Discover hourly partitions. Close observation of the `CREATE TABLE` statement will reveal a partitioning structure of; `Year, Month, Day, Hour`. Unfortunately, because the directory names do not follow the Spark requirement for partition directory names, the partitions must be manually added via a series of `ALTER TABLE ADD PARTITION` statements. Step 3 processes the directory structure and adds newly discovered partitions. This step should be run prior to any querying 'session' as new partitions are created for every hour of access.
+3. Discover hourly partitions. Close observation of the `CREATE TABLE` statement will reveal a partitioning structure of; `Year, Month, Day, Hour`. Unfortunately, because the directory names do not follow the Spark requirement for partition directory names, the partitions must be manually added via a series of `ALTER TABLE ADD PARTITION` statements. Step 3 processes the directory structure and adds newly discovered partitions. 
+
+    This step should be run prior to any querying 'session' as new partitions are created for every hour of access.
 
 4. Query the logs using partition columns. In addition to the raw partition columns, a computed column `PartitionedRequestDate` allows the specification of query predicates that efficiently restrict the amount of data read to satisfy any given query. Without using partition columns, the query engine must process ALL data which depending on the volume of log data, can be very time consuming. Specifying partition columns enabled partition pruning to limit the amount of data read.
