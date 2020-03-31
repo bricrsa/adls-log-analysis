@@ -2,6 +2,8 @@
 # MAGIC %md ### This notebook shows how to query classic logs using Azure Data Lake Storage.
 # MAGIC 
 # MAGIC ### Step 1: Mount the $logs container
+# MAGIC 
+# MAGIC This technique uses AAD credential passthrough to authenticate the end-user to ADLS. Other authentication schemes are available - [see here](https://docs.microsoft.com/azure/databricks/data/data-sources/azure/azure-datalake-gen2)
 
 # COMMAND ----------
 
@@ -9,11 +11,6 @@ dbutils.widgets.text("accountName", "", "Account Name:")
 
 # COMMAND ----------
 
-
-configs = {
-  "fs.azure.account.auth.type": "CustomAccessToken",
-  "fs.azure.account.custom.token.provider.class":   spark.conf.get("spark.databricks.passthrough.adls.gen2.tokenProviderClassName")
-}
 mountPoint = "/mnt/adls-logs"
 
 if mountPoint in [m.mountPoint for m in dbutils.fs.mounts()]:
@@ -22,26 +19,29 @@ if mountPoint in [m.mountPoint for m in dbutils.fs.mounts()]:
 dbutils.fs.mount(
   source = "abfss://$logs@" + dbutils.widgets.get("accountName") + ".dfs.core.windows.net/blob/",
   mount_point = mountPoint,
-  extra_configs = configs)
+  extra_configs = {
+    "fs.azure.account.auth.type": "CustomAccessToken",
+    "fs.azure.account.custom.token.provider.class":   spark.conf.get("spark.databricks.passthrough.adls.gen2.tokenProviderClassName")
+})
 
 # COMMAND ----------
 
 # MAGIC %md ### Step 2: Define a table structure pointing at the logs
 # MAGIC 
-# MAGIC Define a Spark SQL table (RawAdlsLogs) that allows us to access the data written to the $logs container.
+# MAGIC Define a Spark SQL table (`RawAdlsLogs`) that allows us to access the data written to the `$logs` container.
 # MAGIC 
-# MAGIC Note: We include the non-CSV delimiters and partition structure in this DDL statement.
+# MAGIC Note: We include the non-CSV delimiters and partition structure in this DDL statement. The schema is defined [here](https://docs.microsoft.com/rest/api/storageservices/Storage-Analytics-Log-Format)
 # MAGIC 
-# MAGIC We also declare a view (AdlsLogs) that includes some computed columns. The `PartitionedRequestDate` computed column allows queries to filter rows using Timestamp arithmetic and still perform efficient partition pruning.
+# MAGIC We also declare a view (`AdlsLogs`) that includes some computed columns. The `PartitionedRequestDate` computed column allows queries to filter rows using Timestamp arithmetic and still perform efficient partition pruning.
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC 
 # MAGIC /* Only run this cell when you want to start over. Each time the table is dropped & re-created you will need to re-discovery all of the partitions */
-# MAGIC /*DROP TABLE IF EXISTS RawAdlsLogs;*/
+# MAGIC /* DROP TABLE IF EXISTS RawAdlsLogs */
 # MAGIC 
-# MAGIC CREATE TABLE RawAdlsLogs (
+# MAGIC CREATE TABLE IF NOT EXISTS RawAdlsLogs (
 # MAGIC     Version  STRING,
 # MAGIC     RequestStartTime  TIMESTAMP,
 # MAGIC     OperationType  STRING,
@@ -88,11 +88,8 @@ dbutils.fs.mount(
 # MAGIC OPTIONS (sep=';')
 # MAGIC PARTITIONED BY (Year, Month, Day, Hour)
 # MAGIC LOCATION '/mnt/adls-logs/';
-
-# COMMAND ----------
-
-# MAGIC %sql
 # MAGIC 
+# MAGIC /* Create a view to query by */
 # MAGIC DROP VIEW IF EXISTS AdlsLogs;
 # MAGIC 
 # MAGIC CREATE VIEW AdlsLogs
@@ -105,7 +102,7 @@ dbutils.fs.mount(
 # MAGIC     when isnotnull(UserObjectId) then UserObjectId
 # MAGIC     else AuthenticationType
 # MAGIC   end as Authenticated  
-# MAGIC FROM RawAdlsLogs
+# MAGIC FROM RawAdlsLogs;
 
 # COMMAND ----------
 
@@ -132,13 +129,13 @@ def discover_partitions(basePath, partitionInfo, parts, partIdx, existingPartiti
 parts = spark.sql('SHOW PARTITIONS RawAdlsLogs')\
   .rdd.map(lambda row: {part.split('=')[0]:part.split('=')[1] for (part) in row[0].split('/')})\
   .collect()
-discover_partitions('/mnt/adls-logs', {}, ['Year', 'Month', 'Day', 'Hour'], 0, parts)
+discover_partitions(mountPoint, {}, ['Year', 'Month', 'Day', 'Hour'], 0, parts)
 
 
 # COMMAND ----------
 
 # MAGIC %md ### Step 4: Query the logs along partition lines 
-# MAGIC We can query this table using Spark SQL. The WHERE clause should include as much as the partition information as possible to avoid
+# MAGIC We can query this table using Spark SQL. The WHERE clause should include as much of the partition information as possible to avoid
 # MAGIC full directory scans, which will cause the query to run slowly.
 
 # COMMAND ----------
